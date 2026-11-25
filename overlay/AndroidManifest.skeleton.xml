@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Replaces ics-openvpn's main/src/skeleton/AndroidManifest.xml at build time.
+  Keeps the original skeleton entries and adds our own launcher screen + branding.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:label="VPN Test"
+        android:icon="@drawable/vpn_icon"
+        android:roundIcon="@drawable/vpn_icon"
+        android:usesCleartextTraffic="true"
+        tools:replace="android:label,android:icon,android:roundIcon"
+        tools:ignore="AllowBackup,GoogleAppIndexingWarning">
+
+        <activity
+            android:name="com.syedtechdevelopers.vpntest.MainActivity"
+            android:exported="true"
+            android:label="VPN Test"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:exported="true"
+            android:name="de.blinkt.openvpn.activities.NotImplemented"
+            tools:ignore="ExportedActivity" />
+
+        <activity-alias
+            android:exported="true"
+            android:name="de.blinkt.openvpn.activities.LogWindow"
+            android:targetActivity="de.blinkt.openvpn.activities.NotImplemented" />
+
+        <activity-alias
+            android:exported="true"
+            android:name="de.blinkt.openvpn.activities.Req"
+            android:targetActivity="de.blinkt.openvpn.activities.NotImplemented" />
+
+    </application>
+</manifest>

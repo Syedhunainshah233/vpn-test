@@ -38,18 +38,17 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import de.blinkt.openvpn.api.ExternalAppDatabase;
 import de.blinkt.openvpn.api.IOpenVPNAPIService;
 import de.blinkt.openvpn.api.IOpenVPNStatusCallback;
 
 /**
  * Chhota test VPN app.
  * - VPN Gate (vpngate.net) se free servers ki list leta hai
- * - Tunnel "OpenVPN for Android" app (de.blinkt.openvpn) ke zariye banta hai,
- *   is liye ye APK bohot halka rehta hai.
+ * - OpenVPN engine isi app ke andar hai (koi doosri app nahi chahiye).
  */
 public class MainActivity extends Activity {
 
-    private static final String OPENVPN_PKG = "de.blinkt.openvpn";
     private static final String VPNGATE_URL = "http://www.vpngate.net/api/iphone/";
     private static final int REQ_API_PERMISSION = 101;
     private static final int REQ_VPN_PERMISSION = 102;
@@ -194,6 +193,15 @@ public class MainActivity extends Activity {
         });
 
         setContentView(root);
+
+        // Hamari apni app ko andar wale OpenVPN engine ki ijazat pehle se de do
+        try { new ExternalAppDatabase(this).addApp(getPackageName()); } catch (Exception ignored) { }
+        // Android 13+: "Connected" notification dikhane ki ijazat
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 7);
+        }
+
         setState("Disconnected", false);
         bindOpenVpn();
         loadServers();
@@ -379,37 +387,17 @@ public class MainActivity extends Activity {
     }
 
     private void bindOpenVpn() {
-        if (!isOpenVpnInstalled()) return;
         Intent i = new Intent(IOpenVPNAPIService.class.getName());
-        i.setPackage(OPENVPN_PKG);
+        i.setPackage(getPackageName());
         try {
             bindService(i, conn, Context.BIND_AUTO_CREATE);
         } catch (Exception ignored) { }
     }
 
-    private boolean isOpenVpnInstalled() {
-        try {
-            getPackageManager().getPackageInfo(OPENVPN_PKG, 0);
-            return true;
-        } catch (PackageManager.NameNotFoundException e) {
-            return false;
-        }
-    }
-
     private void onConnectClicked() {
-        if (!isOpenVpnInstalled()) {
-            new AlertDialog.Builder(this)
-                    .setTitle("Ek dafa ka setup")
-                    .setMessage("Ye test app tunnel banane ke liye free \"OpenVPN for Android\" app use karti hai "
-                            + "(is wajah se ye app itni halki hai).\n\nPlay Store se install karein, phir wapas aa kar Connect dabayein.")
-                    .setPositiveButton("Install", (d, w) -> openStore())
-                    .setNegativeButton("Baad mein", null)
-                    .show();
-            return;
-        }
         if (service == null) {
             bindOpenVpn();
-            toast("OpenVPN se connect ho raha hai, 2 second baad dobara try karein");
+            toast("VPN engine start ho raha hai, 2 second baad dobara try karein");
             return;
         }
         try {
@@ -423,7 +411,7 @@ public class MainActivity extends Activity {
                 toast("Pehle server list load hone dein");
                 return;
             }
-            // Step 1: OpenVPN app se ijazat ("is app ko control karne dein?")
+            // Step 1: andar wale engine ki ijazat (aam tor par pehle se mili hoti hai)
             Intent p = service.prepare(getPackageName());
             if (p != null) {
                 startActivityForResult(p, REQ_API_PERMISSION);
@@ -484,15 +472,6 @@ public class MainActivity extends Activity {
     }
 
     // ------------------------------------------------------------ helpers
-
-    private void openStore() {
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + OPENVPN_PKG)));
-        } catch (Exception e) {
-            startActivity(new Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=" + OPENVPN_PKG)));
-        }
-    }
 
     private static long parseLong(String s) {
         try { return Long.parseLong(s.trim()); } catch (Exception e) { return 0; }

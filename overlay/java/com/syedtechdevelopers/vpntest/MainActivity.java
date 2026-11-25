@@ -75,6 +75,22 @@ public class MainActivity extends Activity {
     private Server selected;
     private boolean connected = false;
     private boolean busy = false;
+    private boolean switching = false;      // auto-switch ke dauran NOPROCESS ignore karo
+    private boolean callbackRegistered = false;
+    private int attempts = 0;
+    private static final int MAX_ATTEMPTS = 5;
+    private static final long TIMEOUT_MS = 25000;
+    private final List<String> logLines = new ArrayList<>();
+    private TextView logText;
+
+    private final Runnable timeoutCheck = new Runnable() {
+        @Override public void run() {
+            if (busy && !connected) {
+                log("TIMEOUT", "25s mein connect nahi hua");
+                tryNextServer();
+            }
+        }
+    };
 
     private TextView statusText, serverText, infoText;
     private Button connectBtn;
@@ -136,8 +152,19 @@ public class MainActivity extends Activity {
         infoText.setTextColor(Color.parseColor("#8A93B2"));
         infoText.setTextSize(12);
         infoText.setGravity(Gravity.CENTER);
-        infoText.setPadding(0, dp(4), 0, dp(10));
+        infoText.setPadding(0, dp(4), 0, dp(6));
         root.addView(infoText);
+
+        logText = new TextView(this);
+        logText.setTextColor(Color.parseColor("#9BE7A8"));
+        logText.setTextSize(10.5f);
+        logText.setTypeface(Typeface.MONOSPACE);
+        logText.setBackground(round(Color.parseColor("#090B14"), dp(8)));
+        logText.setPadding(dp(8), dp(6), dp(8), dp(6));
+        logText.setText("log: abhi khali");
+        LinearLayout.LayoutParams lgp = new LinearLayout.LayoutParams(-1, -2);
+        lgp.bottomMargin = dp(8);
+        root.addView(logText, lgp);
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -277,6 +304,9 @@ public class MainActivity extends Activity {
                     r.close();
                     Collections.sort(result, new Comparator<Server>() {
                         @Override public int compare(Server a, Server b) {
+                            // TCP pehle (Pakistan mein UDP aksar block hota hai), phir score
+                            int ta = "tcp".equals(a.proto) ? 0 : 1, tb = "tcp".equals(b.proto) ? 0 : 1;
+                            if (ta != tb) return ta - tb;
                             return Long.compare(b.score, a.score);
                         }
                     });
@@ -333,6 +363,7 @@ public class MainActivity extends Activity {
                 // Agar ye app pehle allow ho chuki hai to status updates foran milne lagenge
                 if (service.prepare(getPackageName()) == null) {
                     service.registerStatusCallback(callback);
+                    callbackRegistered = true;
                 }
             } catch (Exception ignored) { }
         }
@@ -352,11 +383,54 @@ public class MainActivity extends Activity {
         }
     };
 
-    private void onVpnStatus(String state, String message) {
-        if ("CONNECTED".equals(state)) {
+    private void log(String state, String message) {
+        String line = state + (message != null && !message.isEmpty() ? ": " + message : "");
+        if (line.length() > 90) line = line.substring(0, 90) + "…";
+        if (!logLines.isEmpty() && logLines.get(logLines.size() - 1).equals(line)) return;
+        logLines.add(line);
+        while (logLines.size() > 7) logLines.remove(0);
+        StringBuilder sb = new StringBuilder();
+        for (String l : logLines) { if (sb.length() > 0) sb.append('\n'); sb.append(l); }
+        logText.setText(sb.toString());
+    }
+
+    private void tryNextServer() {
+        ui.removeCallbacks(timeoutCheck);
+        attempts++;
+        if (attempts >= MAX_ATTEMPTS || servers.isEmpty()) {
+            switching = false;
             busy = false;
+            try { if (service != null) service.disconnect(); } catch (Exception ignored) { }
+            setState("❌ " + attempts + " servers try kiye, connect nahi hua", false);
+            return;
+        }
+        int idx = servers.indexOf(selected);
+        selected = servers.get((idx + 1) % servers.size());
+        adapter.notifyDataSetChanged();
+        showSelected();
+        log("SWITCH", "agla server: " + selected.country + " " + selected.ip);
+        switching = true;
+        try {
+            if (service != null) service.disconnect();
+        } catch (Exception ignored) { }
+        ui.postDelayed(new Runnable() {
+            @Override public void run() {
+                try { startVpn(); } catch (Exception e) { log("ERROR", e.getMessage()); }
+            }
+        }, 1500);
+    }
+
+    private void onVpnStatus(String state, String message) {
+        log(state, message);
+        if ("CONNECTED".equals(state)) {
+            ui.removeCallbacks(timeoutCheck);
+            busy = false;
+            switching = false;
+            attempts = 0;
             setState("✅ Connected", true);
         } else if ("NOPROCESS".equals(state) || "EXITING".equals(state)) {
+            if (switching) return;
+            ui.removeCallbacks(timeoutCheck);
             busy = false;
             setState("Disconnected", false);
         } else if ("NONETWORK".equals(state)) {
@@ -402,6 +476,9 @@ public class MainActivity extends Activity {
         }
         try {
             if (connected || busy) {
+                ui.removeCallbacks(timeoutCheck);
+                switching = false;
+                attempts = 0;
                 service.disconnect();
                 busy = false;
                 setState("Disconnected", false);
@@ -411,6 +488,8 @@ public class MainActivity extends Activity {
                 toast("Pehle server list load hone dein");
                 return;
             }
+            attempts = 0;
+            logLines.clear();
             // Step 1: andar wale engine ki ijazat (aam tor par pehle se mili hoti hai)
             Intent p = service.prepare(getPackageName());
             if (p != null) {
@@ -435,10 +514,17 @@ public class MainActivity extends Activity {
 
     // Step 3: tunnel start
     private void startVpn() throws RemoteException {
-        service.registerStatusCallback(callback);
+        if (!callbackRegistered) {
+            service.registerStatusCallback(callback);
+            callbackRegistered = true;
+        }
         busy = true;
-        setState("Connecting…", false);
+        switching = false;
+        setState("Connecting… (" + (attempts + 1) + "/" + MAX_ATTEMPTS + ")", false);
+        log("START", selected.country + " " + selected.ip + " " + selected.proto.toUpperCase());
         service.startVPN(fixConfig(selected.config));
+        ui.removeCallbacks(timeoutCheck);
+        ui.postDelayed(timeoutCheck, TIMEOUT_MS);
     }
 
     @Override

@@ -15,7 +15,7 @@ cp "$HERE/overlay/AndroidManifest.skeleton.xml" "$SK/AndroidManifest.xml"
 
 # 3) Our own package name (so it never clashes with the real OpenVPN app)
 sed -i 's/^\(\s*\)minSdk = 23/\1minSdk = 23\n\1applicationId = "com.syedtechdevelopers.vpntest"/' "$ICS/main/build.gradle.kts"
-sed -i 's/versionName = "[^"]*"/versionName = "0.2-test"/' "$ICS/main/build.gradle.kts"
+sed -i 's/versionName = "[^"]*"/versionName = "0.3-test"/' "$ICS/main/build.gradle.kts"
 grep -n 'applicationId\|versionName' "$ICS/main/build.gradle.kts"
 
 # 4) Notification texts say "VPN Test" instead of "OpenVPN for Android"

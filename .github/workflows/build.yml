@@ -35,7 +35,7 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - name: Put our app on top of OpenVPN
         run: bash scripts/patch.sh ics
